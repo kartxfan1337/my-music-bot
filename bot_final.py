@@ -24,20 +24,20 @@ ADMIN_ID  = 658117827
 PRICE_LIST = """
 🎛 *Прайс-лист*
 
-🔹 *Сведение (Mixing)*
-• 1 трек — от 2 000 ₽
-• EP (3–5 треков) — от 5 000 ₽
-• Альбом (6+ треков) — от 8 000 ₽
+🎚 *Сведение + Мастеринг* — от 2 000 ₽
+_Балансировка звука, обработка каждого трека, финальный мастеринг для стриминга_
 
-🔸 *Мастеринг (Mastering)*
-• 1 трек — от 1 000 ₽
-• EP (3–5 треков) — от 3 000 ₽
-• Альбом (6+ треков) — от 5 000 ₽
+🎨 *Обложка для трека* — 1 500 ₽
+_Уникальный дизайн в твоём стиле, форматы для всех платформ_
 
-🔷 *Сведение + Мастеринг*
-• 1 трек — от 2 500 ₽
-• EP (3–5 треков) — от 6 500 ₽
-• Альбом (6+ треков) — от 10 000 ₽
+📣 *Продвижение трека* — от 5 000 ₽
+_Размещение на плейлистах, реклама в соцсетях_
+
+🎵 *Написание текста* — 1 000 ₽
+_Пишу текст под твой бит и концепцию_
+
+🎹 *Бит* — от 2 000 ₽
+_Авторский бит под твой жанр и настроение. Также можем перебить любой бит_
 
 💡 Точная цена зависит от сложности проекта.
 Оставь заявку — рассчитаю индивидуально!
@@ -310,9 +310,11 @@ async def new_order_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎛 *Оформление заявки*\n\nШаг 1/5 — Какая услуга тебя интересует?",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎚 Сведение", callback_data="svc_mixing")],
-            [InlineKeyboardButton("💿 Мастеринг", callback_data="svc_mastering")],
-            [InlineKeyboardButton("🎚💿 Сведение + Мастеринг", callback_data="svc_both")],
+            [InlineKeyboardButton("🎚 Сведение + Мастеринг", callback_data="svc_both")],
+            [InlineKeyboardButton("🎨 Обложка для трека", callback_data="svc_cover")],
+            [InlineKeyboardButton("📣 Продвижение трека", callback_data="svc_promo")],
+            [InlineKeyboardButton("🎵 Написание текста", callback_data="svc_lyrics")],
+            [InlineKeyboardButton("🎹 Бит", callback_data="svc_beat")],
             [InlineKeyboardButton("❌ Отмена", callback_data="cancel_order")],
         ]),
     )
@@ -322,7 +324,13 @@ async def new_order_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ask_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data["service"] = {"svc_mixing": "Сведение", "svc_mastering": "Мастеринг", "svc_both": "Сведение + Мастеринг"}[query.data]
+    context.user_data["service"] = {
+        "svc_both":   "Сведение + Мастеринг",
+        "svc_cover":  "Обложка для трека",
+        "svc_promo":  "Продвижение трека",
+        "svc_lyrics": "Написание текста",
+        "svc_beat":   "Бит",
+    }[query.data]
     await query.edit_message_text("Шаг 2/5 — Сколько треков нужно обработать?",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("1 трек", callback_data="cnt_1"), InlineKeyboardButton("2–5 треков", callback_data="cnt_2-5")],
@@ -597,7 +605,7 @@ def main():
     order_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(new_order_start, pattern="^new_order$")],
         states={
-            ASK_SERVICE:     [CallbackQueryHandler(ask_service, pattern="^svc_")],
+            ASK_SERVICE:     [CallbackQueryHandler(ask_service, pattern="^svc_(both|cover|promo|lyrics|beat)$")],
             ASK_TRACK_COUNT: [CallbackQueryHandler(ask_track_count, pattern="^cnt_")],
             ASK_GENRE:       [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_genre)],
             ASK_DRIVE_LINK:  [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_drive_link)],
