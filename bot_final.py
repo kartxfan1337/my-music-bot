@@ -19,6 +19,38 @@ BOT_TOKEN = "8047692214:AAFavW7zNtuZ_ePRC5NRH6G24_ajJInxD0g"
 ADMIN_ID  = 658117827
 
 # ─────────────────────────────────────────
+#  ПОЛИТИКА СЕРВИСА
+# ─────────────────────────────────────────
+POLICY = """
+📜 *Правила и политика сервиса*
+
+Добро пожаловать! Прежде чем начать, пожалуйста, ознакомься с нашими правилами:
+
+*1. Оплата*
+Оплата производится после согласования деталей заказа. Предоплата 50% до начала работы, остаток — после сдачи готового материала.
+
+*2. Сроки*
+Сроки выполнения обсуждаются индивидуально. Срочные заказы возможны за дополнительную плату.
+
+*3. Правки*
+Каждый заказ включает 2 бесплатные правки. Последующие правки оплачиваются отдельно по договорённости.
+
+*4. Исходники*
+Клиент обязуется предоставить файлы надлежащего качества (WAV/AIFF, 24 bit / 44.1 kHz). За качество исходников ответственность несёт клиент.
+
+*5. Авторские права*
+Все готовые материалы передаются клиенту после полной оплаты. Мы оставляем за собой право использовать работы в портфолио, если клиент не против.
+
+*6. Конфиденциальность*
+Мы не передаём твои данные и материалы третьим лицам.
+
+*7. Отказ от заказа*
+При отказе клиента после начала работы предоплата не возвращается.
+
+Нажимая кнопку *«Принимаю ✅»*, ты подтверждаешь, что ознакомился с правилами и согласен с ними.
+"""
+
+# ─────────────────────────────────────────
 #  ПРАЙС-ЛИСТ
 # ─────────────────────────────────────────
 PRICE_LIST = """
@@ -93,6 +125,9 @@ STATUSES = {
 # Состояния диалога отзыва
 REVIEW_RATING, REVIEW_TEXT = range(10, 12)
 
+# Состояния диалога анкеты
+JOB_NAME, JOB_SKILLS, JOB_EXPERIENCE, JOB_CONFIRM = range(20, 24)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -125,6 +160,23 @@ def init_db():
             order_id   INTEGER,
             rating     INTEGER,
             text       TEXT,
+            created_at TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS policy_accepted (
+            user_id  INTEGER PRIMARY KEY,
+            accepted INTEGER DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS job_applications (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER,
+            username   TEXT,
+            name       TEXT,
+            skills     TEXT,
+            experience TEXT,
             created_at TEXT
         )
     """)
@@ -230,6 +282,7 @@ def main_menu_keyboard():
         [InlineKeyboardButton("💰 Прайс-лист", callback_data="prices")],
         [InlineKeyboardButton("❓ FAQ", callback_data="faq")],
         [InlineKeyboardButton("📞 Связаться напрямую", callback_data="contact")],
+        [InlineKeyboardButton("🏠 О нас", callback_data="about")],
     ])
 
 
@@ -241,11 +294,28 @@ def back_btn():
 #  СТАРТ
 # ─────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Привет! Я помогу тебе оформить заказ на *сведение* или *мастеринг*.\n\nВыбери, что тебя интересует:",
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard(),
-    )
+    user_id = update.effective_user.id
+    # Проверяем, принял ли пользователь политику
+    conn = sqlite3.connect("orders.db")
+    c = conn.cursor()
+    c.execute("SELECT accepted FROM policy_accepted WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if row and row[0]:
+        await update.message.reply_text(
+            "👋 Привет! Я помогу тебе оформить заказ.\n\nВыбери, что тебя интересует:",
+            parse_mode="Markdown",
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            POLICY,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Принимаю ✅", callback_data="accept_policy")],
+            ]),
+        )
 
 
 # ─────────────────────────────────────────
@@ -255,7 +325,19 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "prices":
+    if query.data == "accept_policy":
+        conn = sqlite3.connect("orders.db")
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO policy_accepted (user_id, accepted) VALUES (?, 1)", (query.from_user.id,))
+        conn.commit()
+        conn.close()
+        await query.edit_message_text(
+            "✅ Отлично! Ты принял условия.\n\n👋 Добро пожаловать! Выбери, что тебя интересует:",
+            parse_mode="Markdown",
+            reply_markup=main_menu_keyboard(),
+        )
+
+    elif query.data == "prices":
         await query.edit_message_text(PRICE_LIST, parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🎛 Оставить заявку", callback_data="new_order")],
@@ -269,6 +351,19 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "📞 *Связаться напрямую:*\n\nTelegram: @твой\\_ник\nПочта: email@example.com\n\nНапишу в течение нескольких часов 🎵",
             parse_mode="Markdown", reply_markup=back_btn())
+
+    elif query.data == "about":
+        await query.edit_message_text(
+            "🏠 *О нас — kartxfan prod*\n\n"
+            "Мы занимаемся профессиональным производством музыки: сведение, мастеринг, биты, обложки, тексты и продвижение.\n\n"
+            "Наша цель — помочь артистам звучать на уровне мировых стандартов 🎵\n\n"
+            "Хочешь стать частью команды?",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🤝 Хочу работать в kartxfan prod", callback_data="job_apply")],
+                [InlineKeyboardButton("◀️ В меню", callback_data="back_to_menu")],
+            ])
+        )
 
     elif query.data == "back_to_menu":
         await query.edit_message_text("Выбери, что тебя интересует:", reply_markup=main_menu_keyboard())
@@ -591,7 +686,131 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("✅ Готовые", callback_data="admin_filter_done")],
                 [InlineKeyboardButton("📋 Все заказы", callback_data="admin_filter_all")],
                 [InlineKeyboardButton("⭐ Отзывы", callback_data="admin_reviews")],
+                [InlineKeyboardButton("🤝 Анкеты на работу", callback_data="admin_jobs")],
             ]))
+
+    elif data == "admin_jobs":
+        conn = sqlite3.connect("orders.db")
+        c = conn.cursor()
+        c.execute("SELECT * FROM job_applications ORDER BY id DESC")
+        rows = c.fetchall()
+        conn.close()
+        if not rows:
+            await query.edit_message_text("Анкет пока нет.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_back")]]))
+            return
+        text = "🤝 *Анкеты на работу:*\n\n"
+        for r in rows:
+            text += f"👤 @{r[2]} — *{r[3]}*\n🎛 {r[4]}\n⭐ _{r[5]}_\n📅 {r[6]}\n\n"
+        await query.edit_message_text(text[:4000], parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_back")]]))
+
+
+# ─────────────────────────────────────────
+#  ДИАЛОГ: АНКЕТА НА РАБОТУ
+# ─────────────────────────────────────────
+async def job_apply_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.clear()
+    await query.edit_message_text(
+        "🤝 *Анкета — kartxfan prod*\n\n"
+        "Рады, что хочешь к нам! Заполни короткую анкету.\n\n"
+        "Шаг 1/3 — Как тебя зовут?",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отмена", callback_data="cancel_job")]]),
+    )
+    return JOB_NAME
+
+
+async def job_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["job_name"] = update.message.text
+    await update.message.reply_text(
+        "Шаг 2/3 — Какие у тебя навыки?\n\n"
+        "_Например: сведение, мастеринг, написание текстов, дизайн, битмейкинг, SMM и т.д._",
+        parse_mode="Markdown",
+    )
+    return JOB_SKILLS
+
+
+async def job_skills(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["job_skills"] = update.message.text
+    await update.message.reply_text(
+        "Шаг 3/3 — Расскажи об опыте и скинь ссылку на свои лучшие работы.\n\n"
+        "_Например: сколько лет в теме, ссылка на SoundCloud / YouTube / портфолио и т.д._\n"
+        "_Если ссылки нет — просто опиши опыт своими словами._",
+        parse_mode="Markdown",
+    )
+    return JOB_CONFIRM
+
+
+async def job_experience(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["job_experience"] = update.message.text
+    d = context.user_data
+    summary = (
+        f"📋 *Проверь свою анкету:*\n\n"
+        f"👤 Имя: *{d['job_name']}*\n"
+        f"🎛 Навыки: *{d['job_skills']}*\n"
+        f"⭐ Опыт: _{d['job_experience']}_\n\n"
+        f"Отправить анкету?"
+    )
+    await update.message.reply_text(
+        summary,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Отправить", callback_data="confirm_job")],
+            [InlineKeyboardButton("❌ Отменить", callback_data="cancel_job")],
+        ]),
+    )
+    return JOB_CONFIRM
+
+
+async def confirm_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    d = context.user_data
+    user = query.from_user
+
+    conn = sqlite3.connect("orders.db")
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO job_applications (user_id, username, name, skills, experience, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user.id, user.username or user.first_name, d["job_name"], d["job_skills"], d["job_experience"], datetime.now().strftime("%d.%m.%Y %H:%M")))
+    conn.commit()
+    conn.close()
+
+    await query.edit_message_text(
+        "✅ *Спасибо за заявку!*\n\n"
+        "Если ваша анкета нас заинтересует — с вами свяжутся в ближайшее время! 🎵",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_menu")]]),
+    )
+
+    # Уведомление админу
+    try:
+        await context.bot.send_message(
+            ADMIN_ID,
+            f"🔔 *Новая анкета на работу!*\n\n"
+            f"👤 @{user.username or user.first_name}\n"
+            f"📝 Имя: {d['job_name']}\n"
+            f"🎛 Навыки: {d['job_skills']}\n"
+            f"⭐ Опыт: {d['job_experience']}",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass
+
+    return ConversationHandler.END
+
+
+async def cancel_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.clear()
+    await query.edit_message_text("❌ Анкета отменена.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_menu")]]))
+    return ConversationHandler.END
 
 
 # ─────────────────────────────────────────
@@ -627,10 +846,23 @@ def main():
         fallbacks=[CallbackQueryHandler(cancel_review, pattern="^cancel_review$")],
     )
 
+    # Диалог анкеты на работу
+    job_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(job_apply_start, pattern="^job_apply$")],
+        states={
+            JOB_NAME:    [MessageHandler(filters.TEXT & ~filters.COMMAND, job_name)],
+            JOB_SKILLS:  [MessageHandler(filters.TEXT & ~filters.COMMAND, job_skills)],
+            JOB_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, job_experience),
+                          CallbackQueryHandler(confirm_job, pattern="^confirm_job$")],
+        },
+        fallbacks=[CallbackQueryHandler(cancel_job, pattern="^cancel_job$")],
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(order_conv)
     app.add_handler(review_conv)
+    app.add_handler(job_conv)
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|setstatus_)"))
     app.add_handler(CallbackQueryHandler(menu_callback))
 
