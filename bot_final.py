@@ -102,8 +102,8 @@ FAQ = """
 Принимаю оплату на карту или по реквизитам.
 
 *— Где найти вас официально?*
-Наш официальный канал: @kartxfan\_prod
-Наш единственный представитель: @no\_swag
+Наш официальный канал: @kartxfan_prod
+Наш единственный представитель: @no_swag
 
 Остерегайтесь мошенников — мы не пишем первыми и не работаем через других людей.
 """
@@ -601,6 +601,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("✅ Готовые", callback_data="admin_filter_done")],
             [InlineKeyboardButton("📋 Все заказы", callback_data="admin_filter_all")],
             [InlineKeyboardButton("⭐ Отзывы", callback_data="admin_reviews")],
+            [InlineKeyboardButton("🤝 Анкеты на работу", callback_data="admin_jobs")],
         ]),
     )
 
@@ -643,8 +644,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Смена статуса
     elif data.startswith("setstatus_"):
-        _, order_id, new_status = data.split("_", 2)
-        order_id = int(order_id)
+        parts = data.split("_")
+        order_id = int(parts[1])
+        new_status = "_".join(parts[2:])
         update_order_status(order_id, new_status)
         row = get_order(order_id)
 
@@ -652,13 +654,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         emoji, label = STATUSES.get(new_status, ("❓", new_status))
         try:
             await context.bot.send_message(
-                row[1],
-                f"🔔 *Обновление по заказу №{order_id}*\n\nНовый статус: {emoji} *{label}*",
+                chat_id=row[1],
+                text=f"🔔 *Обновление по заказу №{order_id}*\n\nНовый статус: {emoji} *{label}*",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📦 Мои заказы", callback_data="my_orders")]]),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Не удалось уведомить клиента {row[1]}: {e}")
 
         # Обновить сообщение
         status_buttons = [
@@ -705,7 +707,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         text = "🤝 *Анкеты на работу:*\n\n"
         for r in rows:
-            text += f"👤 @{r[2]} — *{r[3]}*\n🎛 {r[4]}\n⭐ _{r[5]}_\n📅 {r[6]}\n\n"
+            text += f"👤 @{r[2]} — {r[3]}\n🎛 {r[4]}\n⭐ _{r[5]}_\n📅 {r[6]}\n\n"
         await query.edit_message_text(text[:4000], parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="admin_back")]]))
 
