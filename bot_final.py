@@ -511,7 +511,7 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎵 {d['service']} | {d['track_count']}\n"
             f"🎸 {d['genre']}\n🔗 {d['drive_link']}\n💬 {d['comment']}",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📊 Открыть заказ", callback_data=f"ao_{order_id}")]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📊 Открыть заказ", callback_data=f"aord_{order_id}")]]),
         )
     except Exception as e:
         logger.warning(f"Не удалось уведомить админа: {e}")
@@ -691,13 +691,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         buttons = [[InlineKeyboardButton(
             f"№{r['id']} {STATUSES.get(r['status'],('❓',''))[0]} {r['username']} — {r['service']}",
-            callback_data=f"ao_{r['id']}")] for r in rows]
+            callback_data=f"aord_{r['id']}")] for r in rows]
         buttons.append([InlineKeyboardButton("◀️ Назад", callback_data="admin_back")])
         await query.edit_message_text(f"📋 Найдено заказов: {len(rows)}", reply_markup=InlineKeyboardMarkup(buttons))
 
     # Детали заказа
-    elif data.startswith("ao_"):
-        order_id = int(data[3:])  # убираем "ao_"
+    elif data.startswith("aord_"):
+        order_id = int(data[5:])  # убираем "ao_"
         row = get_order(order_id)
         if not row:
             await query.edit_message_text("Заказ не найден.",
@@ -815,7 +815,7 @@ def main():
     app.add_handler(order_conv)
     app.add_handler(review_conv)
     app.add_handler(job_conv)
-    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(af_|ao_|ss_|admin_)"))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern="^(af_|aord_|ss_|admin_reviews|admin_jobs|admin_back)"))
     app.add_handler(CallbackQueryHandler(menu_callback))
 
     logger.info("Бот запущен...")
